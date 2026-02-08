@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <h2>Crimson Screens</h2>
+
+    <textarea id="links" rows="10" cols="80"
+      placeholder="Paste article links, one per line"></textarea>
+
+    <br><br>
+    <button onclick="submitLinks()">Build Slides</button>
+
+    <p id="status"></p>
+
+    <script>
+      async function submitLinks() {
+        const links = document
+          .getElementById("links")
+          .value.split("\n")
+          .map(l => l.trim())
+          .filter(Boolean);
+
+        document.getElementById("status").innerText = "Building…";
+
+        const res = await fetch("/build", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ links })
+        });
+
+        const data = await res.json();
+
+        if (data.url) {
+          document.getElementById("status").innerHTML =
+            `<a href="${data.url}" target="_blank">Open deck</a>`;
+        } else {
+          document.getElementById("status").innerText =
+            "Error building deck";
+        }
+      }
+    </script>
+  </body>
+</html>
