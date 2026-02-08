@@ -1,42 +1,132 @@
 <!DOCTYPE html>
-<html>
-  <body>
-    <h2>Crimson Screens</h2>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Crimson Slides Builder</title>
 
-    <textarea id="links" rows="10" cols="80"
-      placeholder="Paste article links, one per line"></textarea>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0b0b0b;
+      color: #ffffff;
+      margin: 0;
+      padding: 40px;
+    }
 
-    <br><br>
-    <button onclick="submitLinks()">Build Slides</button>
+    h1 {
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
 
-    <p id="status"></p>
+    p {
+      color: #cccccc;
+      margin-top: 0;
+    }
 
-    <script>
-      async function submitLinks() {
-        const links = document
-          .getElementById("links")
-          .value.split("\n")
-          .map(l => l.trim())
-          .filter(Boolean);
+    textarea {
+      width: 100%;
+      max-width: 800px;
+      height: 180px;
+      background: #111;
+      color: #fff;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 14px;
+      line-height: 1.4;
+      resize: vertical;
+    }
 
-        document.getElementById("status").innerText = "Building…";
+    button {
+      margin-top: 16px;
+      padding: 10px 18px;
+      font-size: 15px;
+      font-weight: 600;
+      background: #b11226;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
 
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 20px;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+
+    .success {
+      color: #4ade80;
+    }
+
+    .error {
+      color: #f87171;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Crimson Slides Builder</h1>
+  <p>Paste one or more Crimson article URLs (one per line).</p>
+
+  <textarea id="urls" placeholder="https://www.thecrimson.com/article/..."></textarea>
+  <br />
+  <button id="buildBtn">Build Slides</button>
+
+  <div id="status" class="status"></div>
+
+  <script>
+    const btn = document.getElementById("buildBtn");
+    const status = document.getElementById("status");
+    const textarea = document.getElementById("urls");
+
+    btn.addEventListener("click", async () => {
+      const urls = textarea.value
+        .split("\n")
+        .map(u => u.trim())
+        .filter(Boolean);
+
+      if (urls.length === 0) {
+        status.textContent = "Please enter at least one URL.";
+        status.className = "status error";
+        return;
+      }
+
+      btn.disabled = true;
+      status.textContent = "Building slides…";
+      status.className = "status";
+
+      try {
         const res = await fetch("/build", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ links })
+          body: JSON.stringify({ links: urls })
         });
 
         const data = await res.json();
 
-        if (data.url) {
-          document.getElementById("status").innerHTML =
-            `<a href="${data.url}" target="_blank">Open deck</a>`;
-        } else {
-          document.getElementById("status").innerText =
-            "Error building deck";
+        if (!res.ok) {
+          throw new Error(data.error || "Build failed");
         }
+
+        status.textContent =
+          `✅ Success!\n\nSlides updated: ${data.count}`;
+        status.className = "status success";
+
+      } catch (err) {
+        status.textContent =
+          `❌ Error building deck:\n\n${err.message}`;
+        status.className = "status error";
+      } finally {
+        btn.disabled = false;
       }
-    </script>
-  </body>
+    });
+  </script>
+
+</body>
 </html>
