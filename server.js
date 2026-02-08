@@ -9,7 +9,7 @@ import { addSlide } from "./slides.js";
 /* ------------------ setup ------------------ */
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,12 +96,12 @@ app.post("/build", async (req, res) => {
 
     console.log("🚀 Building slides...");
     for (const article of articles) {
-        await addSlide({
-            title: article.title,
-            image: article.image
-        });
+      await addSlide({
+        title: article.title,
+        image: article.image
+      });
     }
-    
+
     console.log("✅ Slides updated successfully");
     res.json({ success: true, count: articles.length });
   } catch (err) {
@@ -112,6 +112,6 @@ app.post("/build", async (req, res) => {
 
 /* ---------------- start server ---------------- */
 
-app.listen(PORT, () => {
-  console.log(`✅ Running at http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Running on port ${PORT}`);
 });
