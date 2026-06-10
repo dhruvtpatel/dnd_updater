@@ -39,7 +39,8 @@ async function scrapeCrimsonArticle(url) {
   const title =
     $("h1.css-894m66").first().text().trim() ||
     $("h1.css-1rfyg0l").first().text().trim() ||
-    $("h2.css-1wsj9gp").first().text().trim();
+    $("h2.css-1wsj9gp").first().text().trim() ||
+    $("h2.css-jlamj7").first().text().trim();
 
   if (!title) {
     throw new Error("Headline not found");
@@ -48,6 +49,7 @@ async function scrapeCrimsonArticle(url) {
   // Hero image (ONLY article body, not index cards)
   const image =
     $(".shortcode-large img").first().attr("src") ||
+    $(".shortcode-xlarge img").first().attr("src") ||
     $(".css-nmmrhs img").first().attr("src") ||
     $("img.css-19r0ted").first().attr("src");
 
