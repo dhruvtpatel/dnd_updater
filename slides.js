@@ -108,7 +108,24 @@ export async function addSlide({ title, image }) {
     {
       replaceImage: {
         imageObjectId: heroImage.objectId,
-        url: image
+        url: image,
+        imageReplaceMethod: "CENTER_INSIDE"
+      }
+    },
+
+    // Reset crop so new image isn't offset from template's stale crop properties
+    {
+      updateImageProperties: {
+        objectId: heroImage.objectId,
+        imageProperties: {
+          cropProperties: {
+            leftOffset: 0,
+            rightOffset: 0,
+            topOffset: 0,
+            bottomOffset: 0
+          }
+        },
+        fields: "cropProperties"
       }
     },
 
