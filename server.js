@@ -49,9 +49,9 @@ async function scrapeCrimsonArticle(url) {
   // Hero image (ONLY article body, not index cards)
   const image =
     $(".shortcode-large img").first().attr("src") ||
+    $("img.css-19r0ted").first().attr("src") ||
     $(".shortcode-xlarge img").first().attr("src") ||
-    $(".css-nmmrhs img").first().attr("src") ||
-    $("img.css-19r0ted").first().attr("src");
+    $(".css-nmmrhs img").first().attr("src");
 
   if (!image) {
     throw new Error("Hero image not found");

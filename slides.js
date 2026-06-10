@@ -89,8 +89,9 @@ export async function addSlide({ title, image }) {
   const LINE_SPACING = 100; // ≈ Google Slides default
 
   // True padding (this is the important part)
-  const SPACE_ABOVE_PT = 18 + lines * 6;
-  const SPACE_BELOW_PT = 22 + lines * 8;
+  const extraPad = lines >= 4 ? 14 : 0;
+  const SPACE_ABOVE_PT = 18 + lines * 6 + extraPad;
+  const SPACE_BELOW_PT = 22 + lines * 8 + extraPad;
 
   // Grow box without squishing
   const SCALE_Y = 1 + lines * 0.12;
