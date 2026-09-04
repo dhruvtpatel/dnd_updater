@@ -50,11 +50,26 @@ export const PX_PER_PT = SLIDE_W / 810; // 1.3333
  */
 export const LINE_HEIGHT_EM = 1.2;
 
+/**
+ * Slides puts the FIRST baseline exactly 1.00em below the top of the text
+ * block, then steps by LINE_HEIGHT_EM. It is not the font's ascent (0.949em)
+ * and not half-leading plus ascent (0.899em) -- both of those predict the wrong
+ * top padding. Solved from two independent live renders with different box
+ * sizes and different paragraph spacing: 1.0027em and 0.9941em.
+ */
+export const FIRST_BASELINE_EM = 1.0;
+
 /** Default Slides text insets are 0.1in horizontally, 0.05in vertically. */
 export const INSET_X_PX = 9.6;
 
-/** Breathing room between the outermost text lines and the scrim edge. */
-export const BOX_PAD_Y = 16;
+/**
+ * Padding between the text block and the scrim edge, top and bottom.
+ *
+ * The block is measured cap-top to last baseline, which is what the eye reads
+ * as the text's extent — descenders hang into the lower padding. Set to 34 to
+ * match the optical weight the hand-built template had.
+ */
+export const BOX_PAD_Y = 34;
 
 /** Largest first. Only drops a step when the headline would exceed MAX_LINES. */
 export const FONT_LADDER = [55, 50, 46, 42, 38];
@@ -62,6 +77,11 @@ export const MAX_LINES = 5;
 
 /** The template's translucent-black scrim. */
 export const SCRIM_ALPHA = 0.4154;
+
+/** The QR sits at y=1502; the headline must clear it. */
+export const QR_TOP = 1502;
+/** Keep the scrim off the masthead seam and the QR. */
+export const PLACEMENT_MARGIN = 24;
 
 export const pxToEmu = (px) => Math.round(px * EMU_PER_PX);
 
@@ -102,9 +122,17 @@ export function wrapText(text, sizePt, boxWidthPx = HEADLINE_W) {
 
 /**
  * Pick the biggest size on the ladder that keeps the headline inside MAX_LINES,
- * then size the scrim to hug those lines.
+ * then size the scrim so its top and bottom padding are optically equal.
+ *
+ * Slides centres text vertically with contentAlignment MIDDLE, and where the
+ * ink lands inside that centred block is fixed by the font, not by the box —
+ * so resizing the box can never equalise the padding on its own. Crimson Text
+ * has a tall ascender (0.949em) relative to its cap height (0.641em), which
+ * leaves the block sitting low and the gap above the caps visibly larger than
+ * the gap below the last baseline. The paragraph's spaceAbove is the only lever
+ * that shifts the block within the box, so the correction goes there.
  */
-export function layoutHeadline(title, boxWidthPx = HEADLINE_W) {
+export function layoutHeadline(title, { boxWidthPx = HEADLINE_W, topPx = null } = {}) {
   let sizePt = FONT_LADDER[FONT_LADDER.length - 1];
   let lines = wrapText(title, sizePt, boxWidthPx);
   for (const candidate of FONT_LADDER) {
@@ -115,18 +143,50 @@ export function layoutHeadline(title, boxWidthPx = HEADLINE_W) {
       break;
     }
   }
-  const linePitchPx = sizePt * PX_PER_PT * LINE_HEIGHT_EM;
-  const heightPx = lines.length * linePitchPx + 2 * BOX_PAD_Y;
+
+  const emPx = sizePt * PX_PER_PT;
+  const linePitchPx = emPx * LINE_HEIGHT_EM;
+
+  // Cap-top of the first line to the baseline of the last.
+  const blockPx = (lines.length - 1) * linePitchPx + METRICS.capHeight * emPx;
+  const heightPx = blockPx + 2 * BOX_PAD_Y;
+
+  // Shift that centres the cap-to-baseline block in the box. Solving
+  //   padTop = padBottom  for the shift S gives  S = L - (2*FB - cap)*em,
+  // which is negative for Crimson Text -- the block needs to move up, so it
+  // lands on spaceBelow rather than spaceAbove.
+  const balancePx = (LINE_HEIGHT_EM - 2 * FIRST_BASELINE_EM + METRICS.capHeight) * emPx;
+
+  const height = heightPx;
+  const top = topPx ?? HEADLINE_CENTER_Y - height / 2;
+
   return {
     sizePt,
     lines,
     lineCount: lines.length,
     linePitchPx,
-    heightPx,
-    topPx: HEADLINE_CENTER_Y - heightPx / 2,
+    blockPx,
+    heightPx: height,
+    balancePt: balancePx / PX_PER_PT,
+    padPx: BOX_PAD_Y,
+    topPx: top,
     widthPx: boxWidthPx,
     leftPx: HEADLINE_X,
   };
+}
+
+/**
+ * Where a scrim of this height is allowed to sit: below the masthead seam,
+ * clear of the QR block.
+ */
+export function placementRange(heightPx) {
+  const minTop = BODY_TOP + PLACEMENT_MARGIN;
+  const maxTop = QR_TOP - PLACEMENT_MARGIN - heightPx;
+  if (maxTop < minTop) {
+    const mid = (BODY_TOP + QR_TOP) / 2 - heightPx / 2;
+    return { minTop: mid, maxTop: mid, clamped: true };
+  }
+  return { minTop, maxTop, clamped: false };
 }
 
 /**

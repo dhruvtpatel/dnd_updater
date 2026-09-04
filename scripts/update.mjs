@@ -11,6 +11,7 @@
  */
 
 import { getLatestNews, fetchLeadImage } from "../src/news.mjs";
+import { fetchImage, bestPlacement } from "../src/photo.mjs";
 import { publishQrs } from "../src/qrhost.mjs";
 import { layoutHeadline } from "../src/layout.mjs";
 import { getPresentation, writeArticles, ARTICLE_SLIDE_COUNT } from "../src/slides.mjs";
@@ -46,7 +47,7 @@ async function mapLimit(items, limit, fn) {
 const started = Date.now();
 console.log(`\n=== DND update  ${new Date().toISOString()} ===`);
 
-console.log(`\n[1/4] finding News articles (${LOOKBACK}-day lookback)`);
+console.log(`\n[1/5] finding News articles (${LOOKBACK}-day lookback)`);
 const { candidates, news, selected } = await getLatestNews({ count: LIMIT, lookbackDays: LOOKBACK });
 console.log(`      ${candidates} articles resolved, ${news.length} in News, taking ${selected.length}`);
 if (!selected.length) {
@@ -57,7 +58,7 @@ if (selected.length < LIMIT) {
   console.warn(`      ! only ${selected.length} of ${LIMIT} slots will be refreshed`);
 }
 
-console.log(`\n[2/4] fetching lead photos`);
+console.log(`\n[2/5] fetching lead photos`);
 const articles = await mapLimit(selected, 5, async (a) => {
   let image = null;
   try {
@@ -70,7 +71,24 @@ const articles = await mapLimit(selected, 5, async (a) => {
 const withPhoto = articles.filter((a) => a.imageUrl).length;
 console.log(`      ${withPhoto}/${articles.length} have a lead photo`);
 
-console.log(`\n[3/4] QR codes`);
+console.log(`\n[3/5] choosing headline placement`);
+for (const a of articles) {
+  const box = layoutHeadline(a.title);
+  if (!a.imageUrl) { a.topPx = null; continue; }
+  try {
+    const img = await fetchImage(a.imageUrl);
+    const place = bestPlacement(img, box.heightPx);
+    a.topPx = place.topPx;
+    a.place = place;
+  } catch (e) {
+    console.warn(`      ! ${a.slug}: ${e.message}; centring headline`);
+    a.topPx = null;
+  }
+}
+const moved = articles.filter((a) => a.place && Math.abs(a.topPx - (768 - layoutHeadline(a.title).heightPx / 2)) > 24);
+console.log(`      ${moved.length}/${articles.length} headlines moved off the 40% line for a darker band`);
+
+console.log(`\n[4/5] QR codes`);
 if (WITH_QR && !DRY) {
   const map = await publishQrs(articles.map((a) => a.url));
   for (const a of articles) a.qrUrl = map.get(a.url);
@@ -79,12 +97,15 @@ if (WITH_QR && !DRY) {
   console.log(`      skipped (${DRY ? "--dry-run" : "--no-qr"}); existing QR images left in place`);
 }
 
-console.log(`\n[4/4] ${DRY ? "planning" : "writing"} slides 2-${1 + articles.length}`);
+console.log(`\n[5/5] ${DRY ? "planning" : "writing"} slides 2-${1 + articles.length}`);
 for (const [i, a] of articles.entries()) {
-  const box = layoutHeadline(a.title);
+  const box = layoutHeadline(a.title, { topPx: a.topPx ?? null });
   const dim = a.imageW ? `${a.imageW}x${a.imageH}` : "no photo";
+  const y = a.place
+    ? `y=${box.topPx.toFixed(0)} luma ${a.place.mean.toFixed(0)}`
+    : `y=${box.topPx.toFixed(0)} centred`;
   console.log(
-    `  ${String(i + 2).padStart(2)}. ${box.sizePt}pt/${box.lineCount}L  ${dim.padEnd(10)}  ${a.title.slice(0, 62)}`
+    `  ${String(i + 2).padStart(2)}. ${box.sizePt}pt/${box.lineCount}L  ${dim.padEnd(10)}  ${y.padEnd(20)}  ${a.title.slice(0, 46)}`
   );
 }
 
