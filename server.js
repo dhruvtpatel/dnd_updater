@@ -1,121 +1,75 @@
+/**
+ * Optional manual override.
+ *
+ * The scheduled GitHub Action is what normally drives the deck; this is the
+ * paste-a-URL escape hatch for putting a specific story on screen out of band.
+ * URLs are written to slides 2..n in the order given; the remaining article
+ * slides are left as the last scheduled run left them.
+ */
+
 import express from "express";
-import fetch from "node-fetch";
-import * as cheerio from "cheerio";
-import path from "path";
-import { fileURLToPath } from "url";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { addSlide } from "./slides.js";
-
-/* ------------------ setup ------------------ */
+import { parseArticlePath, resolveArticles, fetchLeadImage } from "./src/news.mjs";
+import { publishQrs, resolveToken } from "./src/qrhost.mjs";
+import { getPresentation, writeArticles, ARTICLE_SLIDE_COUNT } from "./src/slides.mjs";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-/* ---------------- middleware ---------------- */
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Serve static HTML (public/index.html)
 app.use(express.static(path.join(__dirname, "public")));
 
-/* ---------------- helpers ---------------- */
+app.get("/health", (_req, res) => res.json({ ok: true }));
 
-async function scrapeCrimsonArticle(url) {
-  console.log(`🔍 Fetching ${url}`);
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch article (${res.status})`);
-  }
-
-  const html = await res.text();
-  const $ = cheerio.load(html);
-
-  // Headline
-  const title =
-    $("h1.css-894m66").first().text().trim() ||
-    $("h1.css-1rfyg0l").first().text().trim() ||
-    $("h2.css-1wsj9gp").first().text().trim() ||
-    $("h2.css-jlamj7").first().text().trim();
-
-  if (!title) {
-    throw new Error("Headline not found");
-  }
-
-  // Hero image (ONLY article body, not index cards)
-  const image =
-    $(".shortcode-large img").first().attr("src") ||
-    $("img.css-19r0ted").first().attr("src") ||
-    $(".shortcode-xlarge img").first().attr("src") ||
-    $(".css-nmmrhs img").first().attr("src");
-
-  if (!image) {
-    throw new Error("Hero image not found");
-  }
-
-  console.log(`📝 Title: ${title}`);
-  console.log(`🖼️ Image: ${image}`);
-
-  return { title, image };
-}
-
-/* ---------------- routes ---------------- */
-
-// Health check
-app.get("/health", (req, res) => {
-  res.json({ ok: true });
-});
-
-// Build slides
 app.post("/build", async (req, res) => {
-  console.log("📦 RAW BODY:", req.body);
-
   try {
-    let urls = req.body.urls || req.body.links;
+    let urls = req.body.urls ?? req.body.links ?? [];
+    if (typeof urls === "string") urls = urls.split("\n");
+    urls = urls.map((u) => u.trim()).filter(Boolean).slice(0, ARTICLE_SLIDE_COUNT);
+    if (!urls.length) return res.status(400).json({ error: "No URLs provided" });
 
-    // Handle textarea input
-    if (typeof urls === "string") {
-      urls = urls
-        .split("\n")
-        .map(u => u.trim())
-        .filter(Boolean);
-    }
+    const parsed = urls.map((u) => {
+      const p = parseArticlePath(u);
+      if (!p) throw new Error(`not a Crimson article URL: ${u}`);
+      return p;
+    });
 
-    if (!Array.isArray(urls) || urls.length === 0) {
-      console.error("❌ No valid URLs received");
-      return res.status(400).json({ error: "No valid URLs provided" });
-    }
-
-    console.log(`📰 ${urls.length} articles received`);
-
+    // Titles come from the CMS, not the page markup, and keep the given order.
+    const resolved = await resolveArticles(parsed);
+    const byKey = new Map(resolved.map((a) => [a.key, a]));
     const articles = [];
-    for (const url of urls) {
-      const article = await scrapeCrimsonArticle(url);
-      articles.push(article);
+    for (const p of parsed) {
+      const a = byKey.get(p.key);
+      if (!a) throw new Error(`article not found: ${p.key}`);
+      const image = await fetchLeadImage(a.url).catch(() => null);
+      articles.push({ ...a, imageUrl: image?.url ?? null });
     }
 
-    console.log("🚀 Building slides...");
-    for (const article of articles) {
-      await addSlide({
-        title: article.title,
-        image: article.image
-      });
+    if (resolveToken()) {
+      const qr = await publishQrs(articles.map((a) => a.url));
+      for (const a of articles) a.qrUrl = qr.get(a.url);
+    } else {
+      console.warn("no GitHub token; leaving the existing QR images in place");
     }
 
-    console.log("✅ Slides updated successfully");
-    res.json({ success: true, count: articles.length });
+    const results = await writeArticles(await getPresentation(), articles);
+    const failed = results.filter((r) => !r.ok);
+    res.status(failed.length ? 500 : 200).json({
+      success: !failed.length,
+      count: results.length - failed.length,
+      slides: results.map((r) => ({
+        slide: r.slide, title: r.article.title, ok: r.ok,
+        note: r.degraded ?? r.error ?? null,
+      })),
+    });
   } catch (err) {
-    console.error("🔥 BUILD ERROR:", err);
+    console.error("build failed:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-/* ---------------- start server ---------------- */
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Running on port ${PORT}`);
-});
+app.listen(PORT, "0.0.0.0", () => console.log(`listening on ${PORT}`));

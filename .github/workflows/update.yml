@@ -1,0 +1,70 @@
+name: Update DND deck
+
+# The Crimson publishes most News around 9am ET, so that's the main run; the
+# noon and 4pm runs pick up anything that broke later in the day.
+#
+# GitHub cron is UTC-only, so both DST offsets are listed and the job checks the
+# real America/New_York hour before doing anything. That yields exactly three
+# runs a day year-round instead of the hour sliding twice a year.
+on:
+  schedule:
+    - cron: "0 13,16,20 * * *"   # 9am / 12pm / 4pm EDT
+    - cron: "0 14,17,21 * * *"   # 9am / 12pm / 4pm EST
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "How many slides to refresh (max 18)"
+        required: false
+        default: "18"
+      dry_run:
+        description: "Plan only, leave the deck alone"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: dnd-deck
+  cancel-in-progress: false
+
+permissions:
+  contents: write        # force-pushes the per-article QR codes to the qr branch
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if this isn't a 9am / 12pm / 4pm ET slot
+        id: gate
+        run: |
+          hour=$(TZ=America/New_York date +%-H)
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "manual run; proceeding"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "$hour" = "9" ] || [ "$hour" = "12" ] || [ "$hour" = "16" ]; then
+            echo "ET hour is $hour; proceeding"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ET hour is $hour, not a scheduled slot (the other DST cron owns this one)"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci --omit=dev
+        if: steps.gate.outputs.run == 'true'
+
+      - name: Refresh slides 2-19
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/update.mjs \
+            --limit "${{ github.event.inputs.limit || '18' }}" \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
