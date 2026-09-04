@@ -38,13 +38,25 @@ for (const ch of chars) {
   advances[ch] = +(g.advanceWidth / upm).toFixed(6);
 }
 
+// Cap height and descender depth drive the optical balance of the headline
+// scrim: the eye reads a text block as spanning cap-top to last baseline, with
+// descenders hanging into the lower padding.
+const os2 = font.tables.os2 || {};
+const capHeight = os2.sCapHeight || font.charToGlyph("H").getBoundingBox().y2;
+const descInk = Math.min(...[..."gjpqy"].map((c) => font.charToGlyph(c).getBoundingBox().y1));
+const ascInk = Math.max(...[..."bdfhklt"].map((c) => font.charToGlyph(c).getBoundingBox().y2));
+
 fs.writeFileSync(out, JSON.stringify({
   family: "Crimson Text",
   weight: 400,
   unitsPerEm: upm,
   ascender: +(font.ascender / upm).toFixed(6),
   descender: +(font.descender / upm).toFixed(6),
+  capHeight: +(capHeight / upm).toFixed(6),
+  descenderInk: +(Math.abs(descInk) / upm).toFixed(6),
+  ascenderInk: +(ascInk / upm).toFixed(6),
   fallbackAdvance: +(font.charToGlyph("n").advanceWidth / upm).toFixed(6),
   advances,
 }));
 console.log(`${Object.keys(advances).length} glyphs -> ${out} (${fs.statSync(out).size} bytes)`);
+console.log(`cap ${(capHeight/upm).toFixed(4)}em  ascInk ${(ascInk/upm).toFixed(4)}em  descInk ${(Math.abs(descInk)/upm).toFixed(4)}em  asc ${(font.ascender/upm).toFixed(4)}  desc ${(font.descender/upm).toFixed(4)}`);

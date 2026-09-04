@@ -88,8 +88,19 @@ function hasText(el) {
  */
 export function slideRequests(slide, article, { includeImage = true, includeQr = true } = {}) {
   const { hero, qr, headline } = classifySlide(slide);
-  const box = L.layoutHeadline(article.title);
-  const requests = [];
+  const box = L.layoutHeadline(article.title, { topPx: article.topPx ?? null });
+  const requests = [
+    // Article slides must never be hidden. Slide 2 was left skipped from when
+    // it served as the duplication template -- this pipeline edits in place and
+    // reserves no template, so a skipped slide is just a story nobody sees.
+    {
+      updateSlideProperties: {
+        objectId: slide.objectId,
+        slideProperties: { isSkipped: false },
+        fields: "isSkipped",
+      },
+    },
+  ];
 
   if (includeImage && article.imageUrl) {
     // Make the element exactly the body box, then let CENTER_CROP fill it.
@@ -153,16 +164,19 @@ export function slideRequests(slide, article, { includeImage = true, includeQr =
       },
     },
     {
-      // spaceAbove/spaceBelow are zeroed: the box is sized to hug its lines and
-      // centred by contentAlignment, so paragraph padding only fought with it.
+      // Paragraph spacing carries the optical-balance correction. Slides
+      // centres the text block in the box and puts the first baseline a fixed
+      // 1.00em down, so where the ink lands is a property of the font, not of
+      // the box -- this is the only lever that equalises the gap above the caps
+      // with the gap below the last baseline. See layoutHeadline.
       updateParagraphStyle: {
         objectId: headline.objectId,
         textRange: { type: "ALL" },
         style: {
           alignment: "CENTER",
           lineSpacing: 100,
-          spaceAbove: { magnitude: 0, unit: "PT" },
-          spaceBelow: { magnitude: 0, unit: "PT" },
+          spaceAbove: { magnitude: Math.max(0, box.balancePt), unit: "PT" },
+          spaceBelow: { magnitude: Math.max(0, -box.balancePt), unit: "PT" },
         },
         fields: "alignment,lineSpacing,spaceAbove,spaceBelow",
       },
