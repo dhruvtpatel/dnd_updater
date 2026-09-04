@@ -1,11 +1,26 @@
 {
-  "name": "crimson-screens",
+  "name": "dnd-updater",
   "type": "module",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "dependencies": {
-    "cheerio": "^1.0.0",
     "express": "^4.19.2",
-    "googleapis": "^140.0.0",
-    "node-fetch": "^3.3.2"
+    "pngjs": "^7.0.0",
+    "qrcode": "^1.5.4"
+  },
+  "description": "Keeps the Crimson DND signage deck on the day's News",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "update": "node scripts/update.mjs",
+    "dry-run": "node scripts/update.mjs --dry-run",
+    "serve": "node server.js",
+    "verify:qr": "node tools/verify-qr.mjs",
+    "verify:layout": "node tools/verify-layout.mjs",
+    "shoot": "node tools/shoot.mjs"
+  },
+  "devDependencies": {
+    "jsqr": "^1.4.0",
+    "opentype.js": "^2.0.0"
   }
 }
