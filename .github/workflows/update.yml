@@ -1,15 +1,26 @@
 name: Update DND deck
 
-# The Crimson publishes most News around 9am ET, so that's the main run; the
-# noon and 4pm runs pick up anything that broke later in the day.
+# One cron set, no gate.
 #
-# GitHub cron is UTC-only, so both DST offsets are listed and the job checks the
-# real America/New_York hour before doing anything. That yields exactly three
-# runs a day year-round instead of the hour sliding twice a year.
+# GitHub's scheduled triggers are best-effort and on free runners routinely
+# land 1.5-3 hours late. An earlier version listed both DST offsets and had the
+# job check the wall-clock ET hour to decide which set owned the slot -- which
+# turned every delayed run into a skipped one. Over the first three days that
+# cancelled 15 of 16 scheduled runs, each reporting success while doing nothing.
+#
+# So: a single set of times, chosen to land after the morning news drop in both
+# halves of the year, and nothing that can decline to run.
+#
+#   14:23 UTC -> 10:23 EDT / 09:23 EST
+#   17:23 UTC -> 13:23 EDT / 12:23 EST
+#   21:23 UTC -> 17:23 EDT / 16:23 EST
+#
+# Most News files at 12:00 UTC (08:00 ET), so the morning run clears it either
+# way. Minute :23 rather than :00 because the top of the hour is when GitHub's
+# queue is deepest.
 on:
   schedule:
-    - cron: "0 13,16,20 * * *"   # 9am / 12pm / 4pm EDT
-    - cron: "0 14,17,21 * * *"   # 9am / 12pm / 4pm EST
+    - cron: "23 14,17,21 * * *"
   workflow_dispatch:
     inputs:
       limit:
@@ -35,32 +46,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Skip if this isn't a 9am / 12pm / 4pm ET slot
-        id: gate
-        run: |
-          hour=$(TZ=America/New_York date +%-H)
-          if [ "${{ github.event_name }}" != "schedule" ]; then
-            echo "manual run; proceeding"
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          elif [ "$hour" = "9" ] || [ "$hour" = "12" ] || [ "$hour" = "16" ]; then
-            echo "ET hour is $hour; proceeding"
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ET hour is $hour, not a scheduled slot (the other DST cron owns this one)"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/setup-node@v4
-        if: steps.gate.outputs.run == 'true'
         with:
           node-version: "22"
           cache: npm
 
       - run: npm ci --omit=dev
-        if: steps.gate.outputs.run == 'true'
+
+      - name: How late did this trigger land?
+        if: github.event_name == 'schedule'
+        run: |
+          echo "scheduled: ${{ github.event.schedule }}"
+          echo "now:       $(TZ=America/New_York date '+%a %H:%M %Z')"
 
       - name: Refresh slides 2-19
-        if: steps.gate.outputs.run == 'true'
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
