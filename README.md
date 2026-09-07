@@ -9,13 +9,43 @@ with each story's headline, lead photo, and its own QR code.
 
 ## How it runs
 
-`.github/workflows/update.yml` fires at **9am, 12pm and 4pm ET** — 9am because
-that's when most News publishes, the later two to pick up anything that broke
-during the day. GitHub cron is UTC-only, so both DST offsets are scheduled and
-the job checks the real `America/New_York` hour before doing anything; that
-gives exactly three runs a day year-round instead of the times sliding twice a
-year. There's also a `workflow_dispatch` button with `limit` and `dry_run`
-inputs.
+`.github/workflows/update.yml` fires three times a day on a single cron set,
+`23 14,17,21 * * *` UTC:
+
+| UTC   | EDT (summer) | EST (winter) |
+|-------|--------------|--------------|
+| 14:23 | 10:23        | 09:23        |
+| 17:23 | 13:23        | 12:23        |
+| 21:23 | 17:23        | 16:23        |
+
+Most News files at 12:00 UTC (08:00 ET), so the morning run clears the day's
+batch in either half of the year. Minute `:23` rather than `:00` because the top
+of the hour is when GitHub's scheduling queue is deepest. There's also a
+`workflow_dispatch` button with `limit` and `dry_run` inputs.
+
+### Why there's no DST gate
+
+**GitHub's scheduled triggers are best-effort**, and on free runners they
+routinely land 1.5–3 hours after the nominal time. The first version of this
+workflow listed both DST offsets and had the job compare the live
+`America/New_York` hour against `{9, 12, 16}` to decide which cron set owned the
+slot. That logic is only correct if crons fire on time — a run scheduled for
+9:00 that lands at 11:47 sees hour 11, concludes it isn't a scheduled slot, and
+exits.
+
+Over the first three days it cancelled **15 of 16** scheduled runs. Every one
+reported success, because a gated-out job is a successful job that did nothing.
+The single update that did land was luck: that trigger happened to arrive inside
+hour 12.
+
+The gate was guarding against the times sliding by an hour twice a year while
+letting a three-hour delay silently cancel the run altogether. It's gone. A
+single cron set shifts by an hour between EDT and EST, both of which still land
+after the morning news, and nothing in the job can decline to run.
+
+If a run being 1–3 hours late ever matters more than the count of runs, the fix
+is more crons, not a gate — `23 13,15,17,19,21 * * *` costs about 30 seconds of
+Actions time each and the updater is idempotent.
 
 Run it by hand:
 
